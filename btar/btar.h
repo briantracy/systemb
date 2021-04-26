@@ -43,7 +43,6 @@
 */
 
 
-#define BTAR_FILENAME_SIZE 256
 #define BTAR_MAGIC ("\x9a\x00\xA1\xFC""btar")
 #define BTAR_MAGIC_SIZE 8
 
@@ -54,8 +53,8 @@
 struct btar_archive_header {
     /// Used to identify this file as a btar archive
     char magic[BTAR_MAGIC_SIZE];
-    /// Milliseconds since unix epoch this archive was created
-    uint64_t creation_date;
+    /// Seconds since unix epoch this archive was created
+    int64_t creation_date;
     /// How many files are in the archive
     uint64_t num_files;
     /// How long is the entire header (including metadata below)
