@@ -170,7 +170,55 @@ int pack(const char *const archive_name, const char *const files[], size_t const
     return status;
 }
 
-int unpack(const char *const archive_name, const char *const files[], int const numfiles) {
+static int extract(int const archive_fd, const char *const filename,
+                    uint64_t const offset, uint64_t const length) {
+    #define BUFF_SIZE 4096
+    char buff[BUFF_SIZE];
+
+    printf("info: extracting file `%s` at offset `%llu` with length `%llu`\n",
+            filename, offset, length);
+
+    int const out_fd = open(filename, O_WRONLY | O_CREAT | O_EXCL, 0666);
+    if (out_fd == -1) {
+        fprintf(stderr, "error: could not create file `%s`, or it already exists\n", filename);
+        return 1;
+    }
+
+    if (lseek(archive_fd, (off_t)offset, SEEK_SET) != (off_t)offset) {
+        fprintf(stderr, "error: could not seek in archive file\n");
+        return 1;
+    }
+
+    uint64_t bytes_left = length;
+    while (bytes_left > 0) {
+        size_t const to_read = bytes_left < BUFF_SIZE ? bytes_left : BUFF_SIZE;
+        ssize_t nr = read(archive_fd, buff, to_read);
+        bytes_left -= (uint64_t)nr;
+        if (nr == -1) {
+            fprintf(stderr, "error: read error when extracting\n");
+            close(out_fd);
+            return -1;
+        }
+        if (nr == 0) {
+            close(out_fd);
+            return 0;
+        }
+        ssize_t nw = write(out_fd, buff, (size_t)nr);
+        if (nw == -1) {
+            fprintf(stderr, "error: write error when extracting\n");
+            close(out_fd);
+            return -1;
+        }
+        if (nw == 0) {
+            close(out_fd);
+            return 0;
+        }
+    }
+    close(out_fd);
+    return 0;
+}
+
+int unpack(const char *const archive_name, const char *const files[], size_t const numfiles) {
     printf("info: reading archive `%s`\n", archive_name);
     int const archive_fd = open(archive_name, O_RDONLY);
     if (archive_fd == -1) {
@@ -191,7 +239,7 @@ int unpack(const char *const archive_name, const char *const files[], int const 
     }
     printf("`%s` is a valid btar archive, created at %s",
         archive_name, ctime((time_t *)(&header.creation_date)));
-    printf("Archive contains %zu files and has a header length of %zu bytes\n",
+    printf("Archive contains %llu files and has a header length of %llu bytes\n",
             header.num_files, header.header_length);
     size_t const metadata_bytes = header.num_files * sizeof(struct btar_file_metadata);
     struct btar_file_metadata *const metadata = malloc(metadata_bytes);
@@ -228,10 +276,43 @@ int unpack(const char *const archive_name, const char *const files[], int const 
     char *filename = filenames_block;
     for (size_t i = 0; i < header.num_files; i++) {
         size_t const fname_len = strlen(filename);
-        printf(" o `%s` (bytes=%zu, offset=%zu)\n",
+        printf(" o `%s` (bytes=%llu, offset=%llu)\n",
             filename, metadata[i].num_bytes, metadata[i].archive_offset);
         filename += (fname_len + 1);
     }
+
+    for (size_t i = 0; i < numfiles; i++) {
+        const char *const to_extract = files[i];
+        char *needle = filenames_block;
+        int found_file = 0;
+        for (size_t j = 0; j < header.num_files; j++) {
+            if (strcmp(to_extract, needle) == 0) {
+                found_file = 1;
+                uint64_t offset = metadata[j].archive_offset + header.header_length;
+                uint64_t length = metadata[j].num_bytes;
+                if (extract(archive_fd, to_extract, offset, length) != 0) {
+                    fprintf(stderr, "error: could not extract file: `%s`\n", to_extract);
+                    close(archive_fd);
+                    free(metadata);
+                    free(filenames_block);
+                    return 1;
+                }
+                break;
+            }
+            if (j != header.num_files - 1) {
+                size_t const fname_len = strlen(needle);
+                needle += (fname_len + 1);
+            }
+        }
+        if (!found_file) {
+            fprintf(stderr, "error: no such file `%s` in archive `%s`\n", to_extract, archive_name);
+        }
+    }
+    printf("info: ... done\n");
+    close(archive_fd);
+    free(metadata);
+    free(filenames_block);
+    return 0;
 }
 
 
