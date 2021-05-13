@@ -15,7 +15,7 @@ static int usage() {
 }
 
 static int is_printable(char const byte) {
-    return byte >= '!' && byte <= '~';
+    return byte >= ' ' && byte <= '~';
 }
 
 static char representation(char const byte) {
@@ -62,15 +62,20 @@ static int strings(int const fd) {
                     current_string_length = 0;
                     in_string = 1;
                 }
-                if (current_string_length == MIN_STRING_LENGTH) {
-                    printf("%s", saved_string);
-                } else {
+                if (current_string_length < MIN_STRING_LENGTH) {
                     saved_string[current_string_length] = c;
-
+                } else if (current_string_length == MIN_STRING_LENGTH) {
+                    printf("0x%llx: %s%c", string_start_offset, saved_string, c);
+                } else {
+                    printf("%c", c);
                 }
                 current_string_length++;
-
-
+            } else {
+                if (in_string && current_string_length > MIN_STRING_LENGTH) {
+                    printf("\n");
+                }
+                in_string = 0;
+                current_string_length = 0;
             }
         }
     }
