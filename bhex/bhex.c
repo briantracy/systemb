@@ -7,10 +7,12 @@
 #include <inttypes.h>
 #include <assert.h>
 
-#define STRINGS_BUFF_SIZE 1
-#define MIN_STRING_LENGTH 1
+#define STRINGS_BUFF_SIZE 4096
+#define MIN_STRING_LENGTH 4
 
-#define XXD_BUFF_SIZE 99
+#define XXD_BYTES_PER_LINE 16
+
+#define MIN(A, B) ((A) < (B) ? (A) : (B))
 
 static int usage() {
     printf("bhex [xxd|strings] <file>\n");
@@ -29,20 +31,53 @@ static char representation(char const byte) {
     }
 }
 
+static void output_xxd_line(
+    uint64_t const offset,
+    const char *const line,
+    uint64_t const num_bytes) {
+
+    assert(num_bytes <= XXD_BYTES_PER_LINE);
+
+    printf("%llx: ", offset);
+    for (uint64_t i = 0; i < num_bytes; i++) {
+        printf("%02hhx ", line[i]);
+    }
+    printf("%*c", (int)(XXD_BYTES_PER_LINE - num_bytes), ' ');
+    for (uint64_t i = 0; i < num_bytes; i++) {
+        printf("%c", representation(line[i]));
+    }
+}
+
 static int xxd(int const fd) {
-    ssize_t bytes_read = -1;
-   // while ((bytes_read = read(fd, buff, )))
+    FILE *const stream = fdopen(fd, "r");
+    if (stream == NULL) {
+        fprintf(stderr, "could not convert file to stream\n");
+        close(fd);
+        return 1;
+    }
+    char buff[XXD_BYTES_PER_LINE];
+    uint64_t file_offset = 0;
+    uint64_t line_offset = 0;
+    uint64_t line_index = 0;
+    int byte = -1;
+    while ((byte = fgetc(stream)) >= 0) {
+        if (line_index == XXD_BYTES_PER_LINE) {
+            line_index = 0;
+            output_xxd_line(line_offset, buff, XXD_BYTES_PER_LINE);
+            printf("\n");
+            line_offset = file_offset;
+        }
+        buff[line_index] = (char)byte;
+        line_index++;
+        file_offset++;
+    }
+    if (line_index != 0) {
+        output_xxd_line(line_offset, buff, XXD_BYTES_PER_LINE);
+        printf("\n");
+    }
     return 0;
 }
 
-/*
-    in string, printable char -> print char
-    in string, nonprintable char -> end string
-    out string, printable -> start string + print
-    out string, nonprintable -> nothing
-
-    _ _ _ a b c d _ _ a b _ _ a b c _ _
-*/
 static int strings(int const fd) {
     char saved_string[MIN_STRING_LENGTH + 1];
     saved_string[MIN_STRING_LENGTH] = '\0';
@@ -93,6 +128,7 @@ static int strings(int const fd) {
             }
         }
     }
+    close(fd);
     if (bytes_read == -1) {
         fprintf(stderr, "read error\n");
         return 1;
