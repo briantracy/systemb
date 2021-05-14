@@ -6,8 +6,10 @@
 #include <unistd.h>
 #include <inttypes.h>
 
-#define BUFF_SIZE 5
-#define MIN_STRING_LENGTH 3
+#define STRINGS_BUFF_SIZE 4096
+#define MIN_STRING_LENGTH 4
+
+#define XXD_BUFF_SIZE 99
 
 static int usage() {
     printf("bhex [xxd|strings] <file>\n");
@@ -27,7 +29,8 @@ static char representation(char const byte) {
 }
 
 static int xxd(int const fd) {
-    printf("xxd\n");
+    ssize_t bytes_read = -1;
+   // while ((bytes_read = read(fd, buff, )))
     return 0;
 }
 
@@ -47,11 +50,11 @@ static int strings(int const fd) {
     uint64_t string_start_offset = 0; // offset in file
     int in_string = 0;
 
-    char buff[BUFF_SIZE];
+    char buff[STRINGS_BUFF_SIZE];
     ssize_t bytes_read = -1;
     uint64_t file_offset = 0;
 
-    while ((bytes_read = read(fd, buff, BUFF_SIZE)) > 0) {
+    while ((bytes_read = read(fd, buff, STRINGS_BUFF_SIZE)) > 0) {
         for (ssize_t i = 0; i < bytes_read; i++) {
             file_offset++;
             char const c = buff[i];
@@ -62,16 +65,20 @@ static int strings(int const fd) {
                     current_string_length = 0;
                     in_string = 1;
                 }
-                if (current_string_length < MIN_STRING_LENGTH) {
+                if (current_string_length == MIN_STRING_LENGTH - 1) {
                     saved_string[current_string_length] = c;
-                } else if (current_string_length == MIN_STRING_LENGTH) {
-                    printf("0x%llx: %s%c", string_start_offset, saved_string, c);
-                } else {
-                    printf("%c", c);
+                    current_string_length++;
+                    printf("0x%llx: %s", string_start_offset, saved_string);
                 }
-                current_string_length++;
+                else if (current_string_length >= MIN_STRING_LENGTH) {
+                    printf("%c", c);
+                } else {
+                    saved_string[current_string_length] = c;
+                    current_string_length++;
+                }
+
             } else {
-                if (in_string && current_string_length > MIN_STRING_LENGTH) {
+                if (in_string && current_string_length >= MIN_STRING_LENGTH) {
                     printf("\n");
                 }
                 in_string = 0;
