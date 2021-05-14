@@ -5,9 +5,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <assert.h>
 
-#define STRINGS_BUFF_SIZE 4096
-#define MIN_STRING_LENGTH 4
+#define STRINGS_BUFF_SIZE 1
+#define MIN_STRING_LENGTH 1
 
 #define XXD_BUFF_SIZE 99
 
@@ -65,19 +66,25 @@ static int strings(int const fd) {
                     current_string_length = 0;
                     in_string = 1;
                 }
+                // We have reached our minimum number of consecutive
+                // ascii characters. Now we can print out the strings start
                 if (current_string_length == MIN_STRING_LENGTH - 1) {
                     saved_string[current_string_length] = c;
                     current_string_length++;
                     printf("0x%llx: %s", string_start_offset, saved_string);
                 }
+                // The string is continued, so we just keep printing its chars
                 else if (current_string_length >= MIN_STRING_LENGTH) {
                     printf("%c", c);
-                } else {
+                }
+                // We are at the start of a string maybe? let's keep track
+                else {
                     saved_string[current_string_length] = c;
                     current_string_length++;
                 }
 
             } else {
+                // End the current string (and print it if it was long enough)
                 if (in_string && current_string_length >= MIN_STRING_LENGTH) {
                     printf("\n");
                 }
@@ -85,6 +92,17 @@ static int strings(int const fd) {
                 current_string_length = 0;
             }
         }
+    }
+    if (bytes_read == -1) {
+        fprintf(stderr, "read error\n");
+        return 1;
+    }
+    if (current_string_length > 0 &&
+        current_string_length < MIN_STRING_LENGTH) {
+        saved_string[current_string_length] = '\0';
+        printf("0x%llx: %s\n", string_start_offset, saved_string);
+    } else if (current_string_length >= MIN_STRING_LENGTH) {
+        printf("\n");
     }
     return 0;
 }
