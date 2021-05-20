@@ -61,30 +61,35 @@ int pack(const char *const archive_name, const char *const files[], size_t const
     struct btar_file_metadata *const metadata = calloc(numfiles, sizeof(struct btar_file_metadata));
     if (fds == NULL || metadata == NULL) {
         fprintf(stderr, "error: could not allocate space\n");
-        status = 1;
-        goto cleanup;
+        free(fds);
+        free(metadata);
+        return 1;
     }
 
     for (size_t i = 0; i < numfiles; i++) {
         printf("info: opening file `%s`\n", files[i]);
         if (!is_valid_filename(files[i])) {
             fprintf(stderr, "error: file name `%s` not in current directory\n", files[i]);
-            status = 1;
-            goto cleanup;
+            free(fds);
+            free(metadata);
+            return 1;
         }
         fds[i] = open(files[i], O_RDONLY);
         if (fds[i] == -1) {
             fprintf(stderr, "error: could not open file `%s` for reading\n", files[i]);
             status = 1;
-            goto cleanup;
+            free(fds);
+            free(metadata);
+            return 1;
         }
     }
 
     int const archive_fd = open(archive_name, O_WRONLY | O_CREAT | O_EXCL, 0444);
     if (archive_fd == -1) {
         fprintf(stderr, "error: could not create archive file or archive already exists\n");
-        status = 1;
-        goto cleanup;
+        free(fds);
+        free(metadata);
+        return 1;
     }
 
     size_t const header_size =
@@ -98,6 +103,7 @@ int pack(const char *const archive_name, const char *const files[], size_t const
             sizeof(struct btar_file_metadata) * numfiles, sizeof(struct btar_file_metadata), numfiles);
     printf("info: - filenames: %zu bytes\n", total_filename_bytes(files, numfiles));
 
+    size_t archive_offset = 0;
 
     if (lseek(archive_fd, (off_t)header_size, SEEK_SET) == -1) {
         fprintf(stderr, "error: could not seek to data section of archive\n");
@@ -105,7 +111,7 @@ int pack(const char *const archive_name, const char *const files[], size_t const
         goto cleanup;
     }
 
-    size_t archive_offset = 0;
+
     /// Include the actual file data in the archive
     for (size_t i = 0; i < numfiles; i++) {
         printf("info: transferring file `%s` to `%s`\n", files[i], archive_name);
@@ -219,7 +225,7 @@ static int extract(int const archive_fd, const char *const filename,
 }
 
 int unpack(const char *const archive_name, const char *const files[], size_t const numfiles) {
-    printf("info: reading archive `%s`\n", archive_name);
+
     int const archive_fd = open(archive_name, O_RDONLY);
     if (archive_fd == -1) {
         fprintf(stderr, "error: could not open archive for reading: `%s`\n", archive_name);
@@ -269,6 +275,7 @@ int unpack(const char *const archive_name, const char *const files[], size_t con
         close(archive_fd);
         free(metadata);
         free(filenames_block);
+        return 1;
     }
 
     /// Print all files in archive
